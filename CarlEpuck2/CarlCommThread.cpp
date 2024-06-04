@@ -6,12 +6,17 @@
 #include <cstdlib>
 #include <cstring>
 
+//Linux Pi5
+#include<thread>
 
 using namespace std;
 
 #ifdef _WIN32
 #include <winsock.h>
 #else 
+#include <sys/socket.h>
+#include <netinet/in.h>  // https://stackoverflow.com/questions/32596553/sockaddr-structure-sys-socket-h
+#include <netdb.h>
 #endif
 
 #define SOCKET_PORT 1000
@@ -482,7 +487,8 @@ bool CarlCommThread::initialize(const string& ip) {
 	memset(&address, 0, sizeof(struct sockaddr_in));
 	address.sin_family = AF_INET;
 	address.sin_port = htons(SOCKET_PORT);
-	server = gethostbyname(ip.c_str());
+	server = gethostbyname(ip.c_str());	
+	
 	if (server)
 		memcpy(reinterpret_cast<char*>(&address.sin_addr.s_addr), reinterpret_cast<char*>(server->h_addr), server->h_length);
 	else {

@@ -10,7 +10,8 @@ if (NOT SKIP_CarlEpuck2)
 
   yarp_add_plugin(yarp_CarlEpuck2)
   
-  find_package(Boost 1.75 REQUIRED COMPONENTS date_time container )  #\todo boost version
+  #find_package(Boost 1.75 REQUIRED COMPONENTS date_time container )  #\todo boost version
+  find_package(Boost 1.74 REQUIRED COMPONENTS date_time container )  #\todo boost version
   include_directories(${Boost_INCLUDE_DIRS})
    
   find_package(CARLcpp REQUIRED)
@@ -138,7 +139,7 @@ if (NOT SKIP_CarlEpuck2)
    
   target_link_directories(yarp_CarlEpuck2 PRIVATE 
 	${CMAKE_INSTALL_PREFIX}/lib
-	$ENV{WEBOTS_HOME}/lib/controller
+#	$ENV{WEBOTS_HOME}/lib/controller
 	)
   
   target_link_libraries(yarp_CarlEpuck2 PRIVATE  ACE::ACE
@@ -147,7 +148,7 @@ if (NOT SKIP_CarlEpuck2)
                                                   YARP::YARP_dev
                                                   YARP::YARP_carl   
 
-												  Controller
+#												  Controller
 
 												  )
                                                    
