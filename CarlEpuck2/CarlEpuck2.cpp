@@ -6,12 +6,16 @@ using namespace std;
 #include "CarlEpuck2Robot.h"
 #include "CarlCommThread.h"
 
-using namespace yarp::dev;
 
 #include <yarp/os/all.h>
 
+#include <yarp/sig/Image.h>
+#include <yarp/sig/ImageDraw.h>
+#include <yarp/sig/ImageFile.h>
+
 using namespace yarp::os;
 using namespace yarp::dev;
+using namespace yarp::sig;
 
 #define myTrace   if(m_log <= Log::TraceType)	yarp::os::Log(__FILE__, __LINE__, __YFUNCTION__).trace
 #define myDebug   if(m_log <= Log::DebugType)	yarp::os::Log(__FILE__, __LINE__, __YFUNCTION__).debug
@@ -172,6 +176,19 @@ void EPuck2Sensors::initialize()
 }
 
 
+EPuck2Cam::EPuck2Cam() {
+	printf("EPuck2Cam() \n");
+	initialize();
+};
+
+
+void EPuck2Cam::initialize()
+{
+	t = 0; // sim time in ms
+	for (int i = 0; i < CAM_BYTES; i++) cam[i] = 0;
+}
+
+
 bool EPuck2Sensors::write(ConnectionWriter& connection) const 
 {
 	connection.appendInt32(BOTTLE_TAG_LIST);
@@ -266,6 +283,27 @@ bool EPuck2Sensors::read(ConnectionReader& connection)
 {
 	return true;
 }
+
+
+
+
+
+bool EPuck2Cam::write(ConnectionWriter& connection) const
+{
+	//yarp::sig::ImageOf<yarp::sig::PixelRgb> img;
+	ImageOf<PixelBgra> img;
+	img.setExternal(image, CAM_WIDTH, CAM_HEIGHT);
+
+	img.write(connection);
+
+	return true;
+}
+
+bool EPuck2Cam::read(ConnectionReader& connection)
+{
+	return true;
+}
+
 
 
 EPuck2Actuators::EPuck2Actuators()  {
@@ -433,8 +471,13 @@ bool CarlEpuck2::open(yarp::os::Searchable& config) {
 	fprintf(m_trajectory, "ms; x; y; tau; dsteps_l; dsteps_r; v_l; v_r; v; w; dx; dy; dtau\n");
 
 
+	m_address = config.check("address", Value("192.168.1.21"), "IP address ##.##.##.##").asString();
+	myInfo("ip address: %s", m_address.c_str());
+
+
 	// moved into robot, see below
 	m_comm = new CarlCommThread(this);
+	m_comm->setIp(m_address);
 	m_comm->init();
 	m_comm->start();
 
@@ -458,6 +501,11 @@ bool CarlEpuck2::open(yarp::os::Searchable& config) {
 	m_port_sensors.open(sensors_port_name);
 	myDebug("Webots Sensors port opened.");
 
+	ConstString cam_port_name = config.check("port", Value("/e-puck2/cam"), "Writing Port for Cam").asString();
+	myInfo("port: %s", cam_port_name.c_str());
+	m_port_cam.open(cam_port_name);
+	myDebug("Webots Cam port opened.");
+
 	ConstString actuators_port_name = config.check("port", Value("/e-puck2/actuators"), "Reading Port for Auctors").asString();
 	myInfo("port: %s", actuators_port_name.c_str());
 
@@ -476,7 +524,7 @@ bool CarlEpuck2::open(yarp::os::Searchable& config) {
 
 bool CarlEpuck2::close() {
 	
-	m_robot->robot->stopMotors();
+	m_robot->robot->stopMotors();    // is called in debugger on ctrl-c
 
 	m_port_supervisor.close();
 	myDebug("Webot supervisor port closed.");
@@ -606,6 +654,17 @@ void CarlEpuck2::transmitSensorInput() {
 
 	}
 
+}
+
+void CarlEpuck2::transmitCamInput() {
+
+	auto& camera = m_port_cam.prepare();
+
+	camera.t = (unsigned long long) (m_robot->getTime() * 1000.0);
+
+	camera.image = m_robot->img;
+
+	m_port_cam.write();
 }
 
 
