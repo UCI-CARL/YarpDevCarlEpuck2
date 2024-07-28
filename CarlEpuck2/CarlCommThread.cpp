@@ -17,6 +17,12 @@ using namespace std;
 #include <sys/socket.h>
 #include <netinet/in.h>  // https://stackoverflow.com/questions/32596553/sockaddr-structure-sys-socket-h
 #include <netdb.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <errno.h>
 #endif
 
 #define SOCKET_PORT 1000
@@ -533,6 +539,8 @@ int CarlCommThread::receive(char* data, int size, bool block) {
 	int n = 0;
 	int flag;
 
+// #https://handsonnetworkprogramming.com/articles/differences-windows-winsock-linux-unix-bsd-sockets-compatibility/
+
 #ifdef _WIN32
 
 	if (!block) {
@@ -544,7 +552,14 @@ int CarlCommThread::receive(char* data, int size, bool block) {
 
 #else
 
-	flag = block ? 0 : MSG_DONTWAIT;
+//	flag = block ? 0 : MSG_DONTWAIT;
+
+	if (!block) {
+		u_long iMode = 0;
+		if (ioctl(mFd, FIONBIO, &iMode) != 0)
+			fprintf(stderr, "iocls failed\n");
+	}
+	flag = 0;	
 
 #endif
 
@@ -576,7 +591,7 @@ int CarlCommThread::receive(char* data, int size, bool block) {
 int64_t CarlCommThread::socketBytesAvailable() {
 #ifdef _WIN32
 	u_long iMode = 0;
-	if (ioctlsocket(mFd, FIONREAD, &iMode) != NO_ERROR)
+	if (ioctlsocket(mFd, FIONREAD, &iMode) != 0)
 	{
 		fprintf(stderr, "ioctlsocket failed\n");
 		return -1;
@@ -585,7 +600,15 @@ int64_t CarlCommThread::socketBytesAvailable() {
 		return iMode;
 	}
 #else
-	return -1;
+	u_long iMode = 0;
+	if (ioctl(mFd, FIONREAD, &iMode) != 0)
+	{
+		fprintf(stderr, "ioctl failed\n");
+		return -1;
+	}
+	else {
+		return iMode;
+	}
 #endif
 
 }
