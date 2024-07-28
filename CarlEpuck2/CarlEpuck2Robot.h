@@ -84,6 +84,7 @@ protected:
 	virtual void blinkLeds();
 	virtual void setActuators();
 	virtual void getSensorInput();
+	virtual void getCamInput();
 	virtual void resetActuatorValues();
 
 	virtual void goBackwards();
@@ -136,6 +137,21 @@ public:
 	static const char* lightSensorNames[lightSensorCount]; //= { "ls0", "ls1", "ls2", "ls3", "ls4", "ls5", "ls6", "ls7" };
 	double lightSensorValues[lightSensorCount];
 	int lsValues[lightSensorCount]; // raw values
+
+
+	static const int CAM_WIDTH = 160; // QQVGA
+	static const int CAM_HEIGHT = 120;
+	static const int CAM_BYTES = CAM_WIDTH * CAM_HEIGHT * 3;   // issue int
+	int temp_w;
+	int temp_h;
+	//webots::Camera* camera;  // 160 x 120
+	int camValues[CAM_BYTES];
+	//unsigned char* img;  // ??
+	//unsigned char img[CAM_WIDTH * CAM_HEIGHT * 2];     // QQVGA, RGB565
+	unsigned char img[CAM_WIDTH * CAM_HEIGHT * 4];     // bga
+
+
+	// Actuators
 
 	double speeds[2];
 

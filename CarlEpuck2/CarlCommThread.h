@@ -113,7 +113,8 @@ public:
 	int getLeftSteps() { return leftSteps; }
 	int getRightSteps() { return rightSteps; }
 
-private:
+//private:
+public:
 	int mFd;
 	std::string ip; // for reconnect
 	int port; // reserved

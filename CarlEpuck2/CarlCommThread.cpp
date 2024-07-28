@@ -58,6 +58,10 @@ CarlCommThread::CarlCommThread(yarp::carl::CarlEpuck2* robot) : m_epuck2(robot),
 {
 	m_log = m_epuck2->m_log;
 
+	ir0 = ir1 = ir2 = ir3 = ir4 = ir5 = ir6 = ir7 = 0;
+	distance = distanceCm = 0;
+
+
 #ifdef _WIN32  // initialize the socket api
 	WSADATA info;
 	int rc = WSAStartup(MAKEWORD(1, 1), &info);  // Winsock 1.1
@@ -77,34 +81,86 @@ CarlCommThread::~CarlCommThread()
 void CarlCommThread::run() {
 	//cout << __FUNCTION__ << "\n";
 
-	initConnection("192.168.2.21");   // todo read Ip from param
+	//initConnection("192.168.2.21");   // todo read Ip from param
+	initConnection(ip);  // setIp
 	// check status
 
 	connected();   // wifi led changes from green to off
 
+	enableSensors(true);   
+
+	enableCamera(true);
+
+
 	while (true) {
 
-		//enableSensors(true);   // wifi led changes from off to blue 
+		readyRead();
 
-		readyRead(); 
+		if ((next_request & 0x1) == 1 ) {
 
-		// tof
-		int dist = getDistance(); 
-		m_epuck2->m_robot->tofValue = dist;
+			printf("image %d\n", img_count); 
+// critical section
+			//memcpy(m_epuck2->m_robot->img, input_buffer, MAX_BUFF_SIZE);
 
-		uint16_t dist_cm = getDistanceCm();
-		std::vector<int>ps(8); 
-		readPsTo(ps); 
-		for (int i = 0; i < 8; i++)
-			m_epuck2->m_robot->psValues[i] = ps[i];
+			int index;
+			int counter = 0;
+			unsigned char red, green, blue;
 
-		printf("tof %d mm  ps %d %d %d %d %d %d %d %d\n", (int) dist, ps[0], ps[1], ps[2], ps[3], ps[4], ps[5], ps[6], ps[7] );
+			const int mHeight = 120;
+			const int mWidth = 160;
+
+			unsigned char bgraImage [mHeight * mWidth * 4];
+
+			
+			for (int j = 0; j < mHeight; j++) {
+				for (int i = 0; i < mWidth; i++) {
+					index = 4 * (i + j * mWidth);
+
+					red = input_buffer[counter] & 0xf8;
+					green = (input_buffer[counter++] << 5);
+					green += (input_buffer[counter] & 0xf8) >> 3;
+					blue = input_buffer[counter++] << 3;
+
+					bgraImage[index] = blue;
+					bgraImage[index + 1] = green;
+					bgraImage[index + 2] = red;
+					bgraImage[index + 3] = 0xff;
+				}
+			}
+
+			memcpy(m_epuck2->m_robot->img, bgraImage, 120 * 160 * 4);
+
+		
+		}
+
+
+		if((next_request & 0x2) == 2) {
+			// tof
+			int dist = getDistance();
+			m_epuck2->m_robot->tofValue = dist;
+
+			uint16_t dist_cm = getDistanceCm();
+			std::vector<int>ps(8);
+			readPsTo(ps);
+
+			for (int i = 0; i < 8; i++)
+				m_epuck2->m_robot->psValues[i] = ps[i];
+
+			printf("tof %d mm  ps %d %d %d %d %d %d %d %d\n", (int)dist, ps[0], ps[1], ps[2], ps[3], ps[4], ps[5], ps[6], ps[7]);
+
+		}
+
 
 		// set actuators
 		go(m_epuck2->m_robot->speeds[0], m_epuck2->m_robot->speeds[1]);
 
-		std::this_thread::sleep_for(2 * 64ms); // 256
 
+		//std::this_thread::sleep_for(2 * 64ms); // 256
+		
+		std::this_thread::sleep_for(250ms); 
+		//std::this_thread::sleep_for(150ms);
+		//std::this_thread::sleep_for(200ms);
+		//std::this_thread::sleep_for(333ms);
 	}
 
 }
@@ -162,13 +218,16 @@ void CarlCommThread::initConnection(const std::string& ip) {
 	packet_index = 0;
 	read_state = 0;
 
-	initialize(ip); 
+	// moved from closeCommunication
+	img_count = 0;
+	sensors_count = 0;
 
+	initialize(ip); 
 }
 
 void CarlCommThread::closeCommunication() {
-	img_count = 0;
-	sensors_count = 0;
+//	img_count = 0;
+//	sensors_count = 0;
 
 	cleanup();
 }
@@ -200,7 +259,12 @@ void CarlCommThread::connected()
 {
 
 	output_buffer[0] = 0x80;
-	output_buffer[1] = 0x02; // Bit0: start/stop image stream; bit1: start/stop sensors stream.
+
+	output_buffer[1] = 0x00;
+	//output_buffer[1] = 0x02; // Bit0: start/stop image stream; bit1: start/stop sensors stream.
+	//output_buffer[1] = 0x01; // Bit0: start/stop image stream; bit1: start/stop sensors stream.
+	//output_buffer[1] = 0x03; // Bit0: start/stop image stream; bit1: start/stop sensors stream.
+
 	output_buffer[2] = 0x00; // Behavior / others
 	output_buffer[3] = 0x00; // Left speed LSB
 	output_buffer[4] = 0x00; // Left speed MSB
@@ -221,7 +285,9 @@ void CarlCommThread::connected()
 	output_buffer[19] = 0x00; // LED8 blue
 	output_buffer[20] = 0x00; // sound
 
-	next_request = output_buffer[1];
+	//next_request = output_buffer[1];
+
+	send_cmd = true; // like enable 
 
 	//socket->write((char*)&output_buffer[0], OUTPUT_BUFFER_SIZE);
 	send((char*)&output_buffer[0], OUTPUT_BUFFER_SIZE);
@@ -231,7 +297,8 @@ void CarlCommThread::connected()
 // slot
 void CarlCommThread::disconnected()
 {
-
+//	this->stopMotors();
+//	send((char*)&output_buffer[0], OUTPUT_BUFFER_SIZE);
 }
 
 // slot
@@ -256,12 +323,12 @@ void CarlCommThread::readyRead()
 			receive((char*)&input_buffer[0], 1); 
 
 			if (input_buffer[0] == 0x01) {
-				read_state = 1;
+				read_state = 1;  // read image 
 			}
 			else if (input_buffer[0] == 0x02) {
-				read_state = 2;
+				read_state = 2;  // read sensor 
 			}
-			else if (input_buffer[0] == 0x03) {
+			else if (input_buffer[0] == 0x03) {  // read image, then sensors 
 				if (send_cmd) {
 					send_cmd = false;
 					output_buffer[1] = next_request;
@@ -274,12 +341,21 @@ void CarlCommThread::readyRead()
 			break;
 
 		case 1: // Read image
+
+			//auto read = receive((char*)&input_buffer[packet_index], MAX_BUFF_SIZE); 
+			//package[0] == 0x01  // QVGA package size 38400   RGB565  = 16 bit = 2 Bytes => 
+
+
 			packet_index += receive((char*)&input_buffer[packet_index], MAX_BUFF_SIZE - packet_index);
 
 			if (packet_index == MAX_BUFF_SIZE) {
 				packet_index = 0;
 				img_count++;
 				//emit newImage();
+
+				// deque[10] image ???
+
+
 				if ((output_buffer[1] & 0x02) == 0x00) { // If only image is streamed.
 					if (send_cmd) {
 						send_cmd = false;

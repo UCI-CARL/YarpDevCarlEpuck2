@@ -77,6 +77,27 @@ public:
 	bool b_tof, b_ps, b_ls, b_whls, b_accl, b_gyro;
 };
 
+
+class EPuck2Cam : public Portable {
+public:
+	EPuck2Cam();
+
+	void initialize();
+	bool write(ConnectionWriter& connection) const override;
+	bool read(ConnectionReader& connection) override;
+
+	static const int CAM_WIDTH = 160;
+	static const int CAM_HEIGHT = 120;
+	static const int CAM_BYTES = CAM_WIDTH * CAM_HEIGHT * 3;
+	static const int BLOCK_SIZE = CAM_WIDTH * CAM_HEIGHT * 4;
+	unsigned long long t;  // ms
+
+
+	unsigned char cam[CAM_BYTES];
+	const unsigned char* image;  // RGB565
+
+};
+
 // time stamp,   other scructured data
 class EPuck2Actuators: public Portable {
 public:
@@ -125,7 +146,10 @@ private:
 
 	yarp::os::Log::LogType m_log;
  
+	std::string m_address; 
+
 	yarp::os::BufferedPort<EPuck2Sensors> m_port_sensors; // multitype message 
+	yarp::os::BufferedPort<EPuck2Cam> m_port_cam;
 
 	EPuck2ActuatorsReceiver m_port_actuators;  // multi type messages: (timestamp, motor, led, ...)
 
@@ -142,6 +166,8 @@ public:
 	virtual bool open(yarp::os::Searchable& config);
 
 	virtual void transmitSensorInput();  // yarp write 
+	virtual void transmitCamInput();
+
 	virtual bool receiveActuatorOutput(); 
 
 	friend CarlCommThread;

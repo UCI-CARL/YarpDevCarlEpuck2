@@ -87,6 +87,8 @@ public:
 			m_robot->getSensorInput();
 			m_device->transmitSensorInput();  // yarp writing port   values --> component of EPuck 
 
+			m_device->transmitCamInput();
+
 			m_robot->blinkLeds();
 
 			m_robot->setActuators();
@@ -222,6 +224,30 @@ void CarlEpuck2Robot::getSensorInput() {
 }
 
 
+void CarlEpuck2Robot::getCamInput() {
+
+	//memcpy(img, robot->input_buffer, MAX_BUFF_SIZE);
+
+
+	////camera->saveImage("first.png", 100);
+	////temp_w = camera->getWidth();
+	////temp_h = camera->getHeight();
+	//int counter = 0;
+
+	//for (int x = 0; x < CAM_WIDTH; x++) {
+	//	for (int y = 0; y < CAM_HEIGHT; y++) {
+	//		camValues[counter] = camera->imageGetRed(img, camera->getWidth(), x, y);
+	//		counter++;
+	//		camValues[counter] = camera->imageGetGreen(img, camera->getWidth(), x, y);
+	//		counter++;
+	//		camValues[counter] = camera->imageGetBlue(img, camera->getWidth(), x, y);
+	//		counter++;
+	//	}
+	//}
+}
+
+
+
 bool CarlEpuck2Robot::cliffDetected() {
 
 	return false;
@@ -317,11 +343,11 @@ bool CarlEpuck2Robot::init() {
 	auto name = "e-puck2";
 	if (name == "e-puck2") {
 		printf("e-puck2 robot\n");
-		wbTimeStep = 64;
-		wbCameraTimeStep = 64;
+		wbTimeStep = 20; // 50;  // 20 Hz
+		wbCameraTimeStep = 20; // = 100; // 10 Hz  
 	}
 
-	wbBasicTimeStep = 16;
+	wbBasicTimeStep = 200;  // 50
 
 	resetActuatorValues();   
 
