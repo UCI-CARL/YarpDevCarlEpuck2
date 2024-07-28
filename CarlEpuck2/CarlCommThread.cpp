@@ -6,9 +6,10 @@
 #include <cstdlib>
 #include <cstring>
 
+#ifndef _WIN32
 //Linux Pi5
 #include<thread>
-
+#endif
 using namespace std;
 
 #ifdef _WIN32
