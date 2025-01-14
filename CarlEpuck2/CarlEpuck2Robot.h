@@ -62,6 +62,9 @@ public:
 	virtual void setLedValues(std::vector<int> indeces, const int led[]);
 	virtual void setText(std::string text);
 
+	// test
+	virtual void blinkLeds();
+
 	static const int LEFT = 0;
 	static const int RIGHT = 1;
 	static const double MAX_SPEED; 
@@ -77,12 +80,18 @@ public:
 
 	double getTime();
 
+
+
+
 protected:  
 
 	virtual void initDevices(); 
 
-	virtual void blinkLeds();
+//	virtual void blinkLeds();
 	virtual void setActuators();
+	virtual void setLeds();
+
+
 	virtual void getSensorInput();
 	virtual void getCamInput();
 	virtual void resetActuatorValues();

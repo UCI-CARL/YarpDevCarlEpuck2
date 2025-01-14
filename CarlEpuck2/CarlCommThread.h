@@ -176,6 +176,9 @@ public:
 	   void goLeft();
 	   void goRight();
 	   void stopMotors();
+
+	   void led(int id, int state);
+
 	   void led0Slot(int state);
 	   void led1Slot(int state);
 	   void led2Slot(int state);

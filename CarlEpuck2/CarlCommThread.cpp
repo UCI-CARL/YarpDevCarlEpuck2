@@ -72,7 +72,13 @@ void CarlCommThread::run() {
 
 	//initConnection("192.168.2.21");   // todo read Ip from param
 	initConnection(ip);  // setIp
+
 	// check status
+	if (!isInitialized()) {
+		//m_epuck2->close();  // crash
+		fprintf(stderr, "commthread for device shutdown\n");
+		return;
+	}
 
 	connected();   // wifi led changes from green to off
 
@@ -80,14 +86,13 @@ void CarlCommThread::run() {
 
 	enableCamera(true);
 
-
 	while (true) {
 
 		readyRead();
 
 		if ((next_request & 0x1) == 1 ) {
 
-			printf("image %d\n", img_count); 
+//			printf("image %d\n", img_count); 
 // critical section
 			//memcpy(m_epuck2->m_robot->img, input_buffer, MAX_BUFF_SIZE);
 
@@ -143,6 +148,8 @@ void CarlCommThread::run() {
 		// set actuators
 		go(m_epuck2->m_robot->speeds[0], m_epuck2->m_robot->speeds[1]);
 
+		
+		//led(9, true); 
 
 		//std::this_thread::sleep_for(2 * 64ms); // 256
 		
@@ -254,14 +261,14 @@ void CarlCommThread::connected()
 	//output_buffer[1] = 0x01; // Bit0: start/stop image stream; bit1: start/stop sensors stream.
 	//output_buffer[1] = 0x03; // Bit0: start/stop image stream; bit1: start/stop sensors stream.
 
-	output_buffer[2] = 0x00; // Behavior / others
-	output_buffer[3] = 0x00; // Left speed LSB
-	output_buffer[4] = 0x00; // Left speed MSB
-	output_buffer[5] = 0x00; // Right speed LSB
-	output_buffer[6] = 0x00; // Right speed MSB
-	output_buffer[7] = 0x00; // LEDs
-	output_buffer[8] = 0x00; // LED2 red
-	output_buffer[9] = 0x00; // LED2 green
+	output_buffer[2]  = 0x00; // Behavior / others
+	output_buffer[3]  = 0x00; // Left speed LSB
+	output_buffer[4]  = 0x00; // Left speed MSB
+	output_buffer[5]  = 0x00; // Right speed LSB
+	output_buffer[6]  = 0x00; // Right speed MSB
+	output_buffer[7]  = 0x00; // LEDs
+	output_buffer[8]  = 0x00; // LED2 red
+	output_buffer[9]  = 0x00; // LED2 green
 	output_buffer[10] = 0x00; // LED2 blue
 	output_buffer[11] = 0x00; // LED4 red
 	output_buffer[12] = 0x00; // LED4 green
@@ -497,12 +504,16 @@ void CarlCommThread::readyRead()
 				irCheck = input_buffer[86];
 				irAddress = input_buffer[87];
 				irData = input_buffer[88];
-				memset(irCheckStr, 0x0, 8);
-				memset(irAddressStr, 0x0, 8);
-				memset(irDataStr, 0x0, 8);
-				sprintf(irCheckStr, "%x", irCheck);
-				sprintf(irAddressStr, "%x", irAddress);
-				sprintf(irDataStr, "%x", irData);
+
+				//printf("TV Remote irCheck: %d irAddress: %d  irData: %d %", irCheck, irAddress, irData);
+				//fprintf(stderr, "TV Remote irCheck: %d irAddress: %d  irData: %d %", irCheck, irAddress, irData);
+
+				//memset(irCheckStr, 0x0, 8);
+				//memset(irAddressStr, 0x0, 8);
+				//memset(irDataStr, 0x0, 8);
+				//sprintf(irCheckStr, "%x", irCheck);
+				//sprintf(irAddressStr, "%x", irAddress);
+				//sprintf(irDataStr, "%x", irData);
 
 				// Selector.
 				selector = input_buffer[89];
@@ -540,6 +551,66 @@ void CarlCommThread::go(int speed_left, int speed_right) {
 	output_buffer[6] = (speed_right >> 8) & 0xFF;
 	send_cmd = true;
 }
+
+
+void CarlCommThread::led(const int i, const int state) {
+
+	// send the led commands
+	//output_buffer[7] = 0;
+	//for (int i = 0; i < 10; i++) {
+	{
+		//Led *led = DeviceManager::instance()->led(i);
+		const char d = output_buffer[7];
+		//const int state = led->state();
+
+		//switch (led->index()) {
+		switch (i) {
+		case 0:  // LED1
+			output_buffer[7] = state ? d | 0b00000001 : d & 0b11111110;
+			break;
+		case 1:  // LED2
+			output_buffer[8] = state & 0xff;
+			output_buffer[9] = ((unsigned int)state >> 8) & 0xff;
+			output_buffer[10] = ((unsigned int)state >> 16) & 0xff;
+			break;
+		case 2:  // LED3
+			output_buffer[7] = state ? d | 0b00000010 : d & 0b11111101;
+			break;
+		case 3:  // LED4
+			output_buffer[11] = state & 0xff;
+			output_buffer[12] = ((unsigned int)state >> 8) & 0xff;
+			output_buffer[13] = ((unsigned int)state >> 16) & 0xff;
+			break;
+		case 4:  // LED5
+			output_buffer[7] = state ? d | 0b00000100 : d & 0b11111011;
+			break;
+		case 5:  // LED6
+			output_buffer[14] = state & 0xff;
+			output_buffer[15] = ((unsigned int)state >> 8) & 0xff;
+			output_buffer[16] = ((unsigned int)state >> 16) & 0xff;
+			break;
+		case 6:  // LED7
+			output_buffer[7] = state ? d | 0b00001000 : d & 0b11110111;
+			break;
+		case 7:  // LED8
+			output_buffer[16] = state & 0xff;
+			output_buffer[18] = ((unsigned int)state >> 8) & 0xff;
+			output_buffer[19] = ((unsigned int)state >> 16) & 0xff;
+			break;
+		case 8:  // body LED
+			output_buffer[7] = state ? d | 0b00010000 : d & 0b11101111;
+			break;
+		case 9:  // front LED
+			output_buffer[7] = state ? d | 0b00100000 : d & 0b11011111;
+			break;
+		};
+
+	}
+
+	send_cmd = true;
+}
+
+
 
 
 

@@ -78,6 +78,53 @@ void CarlWbSupervisorThread::run() {
 
 		std::string command = rpcRequest.get(0).asString(); 
 
+		//m_supervisor->m_ignore_actuator_commands = false; 
+
+		if (command == "vel") {
+			double vel_l = rpcRequest.get(1).asDouble();
+			double vel_r = rpcRequest.get(2).asDouble();
+			m_supervisor->m_robot->setSpeed(vel_l, vel_r);
+		}
+		else
+		if (command == "start") {
+			m_supervisor->m_write_sensor_feed = true;
+			m_supervisor->m_read_actuator_commands = true;
+		}
+		else
+		if (command == "hold") {
+			//m_supervisor->m_ignore_actuator_commands = true;
+		}
+		else
+		if (command == "stop") {
+			m_supervisor->m_write_sensor_feed = false;
+			m_supervisor->m_read_actuator_commands = false;
+			m_supervisor->m_robot->setSpeed(0.0, 0.0);
+		}
+		else
+		if (command == "lock") {
+			int led[10]; led[9] = true;  // RGB?  1 should be ok
+			m_supervisor->m_robot->setLedValues({ 9 }, led);
+		}
+		else
+		if (command == "unlock") {
+			int led[10]; led[9] = false;  // RGB?  1 should be ok
+			m_supervisor->m_robot->setLedValues({ 9 }, led);
+		}
+		else
+		if (command == "break") {   // is more an backwards movement ,, break requires a a moving average of teh last n values
+			int led[10]; led[2] = led[4] = led[6] = true;  // RGB?  1 should be ok
+			m_supervisor->m_robot->setLedValues({2, 4, 6}, led);
+		}
+		else
+		if (command == "unbreak") {  // release see below
+			int led[10]; led[2] = led[4] = led[6] = false;  // RGB?  1 should be ok
+			m_supervisor->m_robot->setLedValues({2, 4, 6}, led);
+		}
+		else
+		if (command == "fire") {  // release see below
+			m_supervisor->camShot();
+		}
+		else
 		if (command == "range") // arg1 sensor  ps tof
 		{
 			auto sensor = rpcRequest.get(1).asString();
@@ -338,6 +385,9 @@ bool EPuck2Actuators::read(ConnectionReader& connection)
 		printf("skipped, invalid tag: %d\n", tag);
 		return false;
 	}
+	else {
+		printf("actuators read tag: %d\n", tag);
+	}
 
 	// [vel] 0.1 0.2
 	int ct = connection.expectInt32();  // elements 
@@ -441,9 +491,39 @@ CarlEpuck2::CarlEpuck2() {
 
 	m_robot = new CarlEpuck2Robot(this);   
 
+	m_write_sensor_feed = true; 
+	m_read_actuator_commands = true;
+	//m_ignore_actuator_commands = false;
+
+	m_steps = nullptr;
+	m_trajectory = nullptr;
+
+	m_shoot = false; 
+	m_framerate = 4.0; // frames per second
+	m_lastshot  = std::chrono::steady_clock::now();
+
 
 }
 
+void CarlEpuck2::camShot() {
+
+	std::lock_guard<std::mutex> guard(mtx);
+
+	// thread safe
+
+	// rapid fire check
+
+	// activate next shot
+
+	const auto now = std::chrono::steady_clock::now();
+	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastshot);
+
+	if (ms.count() <  int(1000 / m_framerate) )
+		return; 
+
+	m_shoot = true; 
+
+}
 
 
 bool CarlEpuck2::open(yarp::os::Searchable& config) {
@@ -464,12 +544,16 @@ bool CarlEpuck2::open(yarp::os::Searchable& config) {
 
 
 	//// open logging files
-	m_steps = fopen("ncpuck2_steps.csv", "w");
-	fprintf(m_steps, "ms; steps_l; steps_r\n");
 
-	m_trajectory = fopen("ncpuck2_trajectory.csv", "w");
-	fprintf(m_trajectory, "ms; x; y; tau; dsteps_l; dsteps_r; v_l; v_r; v; w; dx; dy; dtau\n");
-
+	// Testing
+	m_log_trajectory = config.check("log_trajectory", Value(0), "Logging - Trajectory").asBool();
+	myDebug("log trajectory: %s", m_log_trajectory?"true":"false");
+	if (m_log_trajectory) {
+		m_steps = fopen("ncpuck2_steps.csv", "w");
+		fprintf(m_steps, "ms; steps_l; steps_r\n");
+		m_trajectory = fopen("ncpuck2_trajectory.csv", "w");
+		fprintf(m_trajectory, "ms; x; y; tau; dsteps_l; dsteps_r; v_l; v_r; v; w; dx; dy; dtau\n");
+	}
 
 	m_address = config.check("address", Value("192.168.1.21"), "IP address ##.##.##.##").asString();
 	myInfo("ip address: %s", m_address.c_str());
@@ -481,6 +565,7 @@ bool CarlEpuck2::open(yarp::os::Searchable& config) {
 	m_comm->init();
 	m_comm->start();
 
+	// no sync
 	m_robot->robot = m_comm;
 
 	ConstString supervisor_port_name = config.check("port", Value("/e-puck2/supervisor"), "RPC Port for E-Puck").asString();
@@ -522,9 +607,11 @@ bool CarlEpuck2::open(yarp::os::Searchable& config) {
   return true;
 }
 
+
 bool CarlEpuck2::close() {
 	
-	m_robot->robot->stopMotors();    // is called in debugger on ctrl-c
+	if(m_robot && m_robot->robot)
+		m_robot->robot->stopMotors();    // is called in debugger on ctrl-c
 
 	m_port_supervisor.close();
 	myDebug("Webot supervisor port closed.");
@@ -607,9 +694,11 @@ void CarlEpuck2::transmitSensorInput() {
 		sensors.gyro[i] = (int)m_robot->gyroValues[i];
 	}
 
-	m_port_sensors.write(); 
+	if(m_write_sensor_feed)
+		m_port_sensors.write(); 
 
-	if (initialized) {
+
+	if (initialized && m_log_trajectory) {
 		//using namespace std::literals;
 		//const std::chrono::time_point<std::chrono::system_clock> now = std::chrono::system_clock::now();
 		const auto now = std::chrono::steady_clock::now();
@@ -656,7 +745,82 @@ void CarlEpuck2::transmitSensorInput() {
 
 }
 
+#define SAVE_CAMERA_IMAGES
+
+//unsigned char* image = static_cast<unsigned char*>(malloc(IMAGE_SIZE));
+
+
+#ifdef SAVE_CAMERA_IMAGES
+static void rgb565_to_brg888(const unsigned char* rgb565, unsigned char* brg888, int width, int height) {
+	int rgb565_index = 0;
+	int brg888_index = 0;
+	for (int j = 0; j < height; j++) {
+		for (int i = 0; i < width; i++) {
+			unsigned char red = rgb565[rgb565_index] & 0xf8;
+			unsigned char green = (rgb565[rgb565_index++] << 5);
+			green += (rgb565[rgb565_index] & 0xf8) >> 3;
+			unsigned char blue = rgb565[rgb565_index++] << 3;
+			brg888[brg888_index++] = blue;
+			brg888[brg888_index++] = green;
+			brg888[brg888_index++] = red;
+		}
+	}
+	assert(rgb565_index == 160 * 120 * 2);
+	assert(brg888_index == 160 * 120 * 3);
+}
+
+static void brga8880_to_brg888(const unsigned char* brga8880, unsigned char* brg888, int width, int height) {
+	int brga8880_index = 0;
+	int brg888_index = 0;;
+	for (int j = 0; j < height; j++) {
+		for (int i = 0; i < width; i++) {
+			unsigned char blue = brga8880[brga8880_index++] & 0xf8;
+			unsigned char red = brga8880[brga8880_index++] & 0xf8;
+			unsigned char green = brga8880[brga8880_index++] & 0xf8;
+			brga8880_index++; 
+			brg888[brg888_index++] = blue;
+			brg888[brg888_index++] = red;
+			brg888[brg888_index++] = green;
+		}
+	}
+	assert(brga8880_index == 160 * 120 * 4);
+	assert(brg888_index == 160 * 120 * 3);
+}
+
+
+static void save_bmp_image(const char* filename, const unsigned char* image, int width, int height) {
+	int filesize = 54 + 3 * width * height;
+	unsigned char bmpfileheader[14] = { 'B', 'M', 0, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0 };
+	unsigned char bmpinfoheader[40] = { 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 24, 0 };
+	unsigned char bmppad[3] = { 0, 0, 0 };
+	bmpfileheader[2] = (unsigned char)(filesize);
+	bmpfileheader[3] = (unsigned char)(filesize >> 8);
+	bmpfileheader[4] = (unsigned char)(filesize >> 16);
+	bmpfileheader[5] = (unsigned char)(filesize >> 24);
+	bmpinfoheader[4] = (unsigned char)(width);
+	bmpinfoheader[5] = (unsigned char)(width >> 8);
+	bmpinfoheader[6] = (unsigned char)(width >> 16);
+	bmpinfoheader[7] = (unsigned char)(width >> 24);
+	bmpinfoheader[8] = (unsigned char)(height);
+	bmpinfoheader[9] = (unsigned char)(height >> 8);
+	bmpinfoheader[10] = (unsigned char)(height >> 16);
+	bmpinfoheader[11] = (unsigned char)(height >> 24);
+	FILE* f = fopen(filename, "wb");
+	fwrite(bmpfileheader, 1, 14, f);
+	fwrite(bmpinfoheader, 1, 40, f);
+	for (int i = 0; i < height; i++) {
+		fwrite(image + (width * (height - i - 1) * 3), 3, width, f);
+		fwrite(bmppad, 1, (4 - (width * 3) % 4) % 4, f);
+	}
+	fclose(f);
+}
+#endif
+
+
 void CarlEpuck2::transmitCamInput() {
+
+	if(!m_robot->robot->isInitialized())
+		return;
 
 	auto& camera = m_port_cam.prepare();
 
@@ -664,8 +828,35 @@ void CarlEpuck2::transmitCamInput() {
 
 	camera.image = m_robot->img;
 
+
+	{
+		std::lock_guard<std::mutex> guard(mtx);
+		if (m_shoot) {
+#ifdef SAVE_CAMERA_IMAGES
+			// save the image as BMP file to debug
+			static int image_counter = 0;
+			char filename[32];
+			m_lastshot = std::chrono::steady_clock::now();
+
+			sprintf(filename, "images/image%03d.png", image_counter); // prefix
+
+			unsigned char* rgb888 = static_cast<unsigned char*>(malloc(160 * 120 * 3));
+			//rgb565_to_brg888(m_robot->img, rgb888, 160, 120);
+			brga8880_to_brg888(m_robot->img, rgb888, 160, 120);
+
+
+			save_bmp_image(filename, rgb888, 160, 120);
+			free(rgb888);
+
+			image_counter++;
+			m_shoot = false;
+#endif
+		}
+	}
+
 	m_port_cam.write();
 }
+
 
 
 bool CarlEpuck2::receiveActuatorOutput() {
@@ -677,9 +868,18 @@ bool CarlEpuck2::receiveActuatorOutput() {
 	if (actuators) {
 		received = true;
 
-		for (int i = 0; i < actuators->N; i++) {
-			m_robot->speeds[i] = actuators->speeds[i];
+		//if (m_ignore_actuator_commands) {
+		//	printf("ignoring actuator set speed %f %f\n", actuators->speeds[0], actuators->speeds[1]);
+		//}
+
+		if (m_read_actuator_commands ) {   // && !m_ignore_actuator_commands
+
+			for (int i = 0; i < actuators->N; i++) {
+				m_robot->speeds[i] = actuators->speeds[i];
+			}
+
 		}
+
 
 	}
 

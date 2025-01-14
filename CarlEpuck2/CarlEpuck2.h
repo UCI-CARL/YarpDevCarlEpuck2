@@ -155,11 +155,31 @@ private:
 
 	CarlEpuck2Robot* m_robot;  // wrapper with behavior with weak yarp dependencies
 
+	// data logging  -> start stop experiment 
+	bool m_log_trajectory;
+
 	std::FILE *m_steps;  // csv with wheel steps: ms;left;right  (1000 steps per revolution)  
 	std::FILE *m_trajectory;  // csv trajectory: ms, x, y, tau  (in m and rad)
 
+	bool m_shoot; 
+	double  m_framerate; // n pre second  > 1 slow motion, < 1 zeitraffer
+	std::chrono::time_point<std::chrono::steady_clock> m_lastshot;
+
+	void camShot();	// grab the current image from the cam and save it as uncompressed .png. 
+				// keep fire button pressed to shoot a sequence
+				// the parameter framerate determines the pause between subsequent shots
+
+	std::mutex mtx;
+
+public:
+	bool m_write_sensor_feed;
+	bool m_read_actuator_commands; 
+	//bool m_ignore_actuator_commands;
+
+
 public:
 	CarlEpuck2();
+
 
 	// Device Driver IF
 	virtual bool close();

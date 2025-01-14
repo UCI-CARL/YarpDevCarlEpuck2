@@ -71,25 +71,33 @@ class BodyBehavior : public CarlEpuck2Behavior
 public:
 
 	int steps;
+
 public:
 	BodyBehavior(yarp::carl::CarlEpuck2Robot* robot, yarp::carl::CarlEpuck2* device, int steps = 0) :CarlEpuck2Behavior(robot, device), steps(steps) {};
 
 	virtual void run() {
 
-
 		int dt = 0;
 
 		for (int i = 0; !this->isStopping() && (steps == 0 || i < steps) && dt != -1; i++) {
 
-			m_robot->getSensorInput();
-			m_device->transmitSensorInput();  // yarp writing port   values --> component of EPuck 
+			// wait for comm thread 
+			if (m_robot->robot != nullptr && m_robot->robot->isInitialized()) {
 
-			m_device->transmitCamInput();
+				m_robot->getSensorInput();
 
-			m_robot->blinkLeds();
+				m_device->transmitSensorInput();  // yarp writing port   values --> component of EPuck 
 
-			m_robot->setActuators();
-			dt = m_robot->step(1);
+				m_device->transmitCamInput();
+
+				//m_robot->blinkLeds();
+
+				m_robot->setActuators();
+
+				m_robot->setLeds();
+
+				dt = m_robot->step(1);
+			}
 
 			this->yield(); 
 
@@ -257,6 +265,13 @@ void CarlEpuck2Robot::setActuators() {
 
 }
 
+void CarlEpuck2Robot::setLeds() {  // actuators
+
+	for (int i = 0; i < ledCount; i++) {
+		robot->led(i, ledValues[i]);
+	}
+
+}
 
 void CarlEpuck2Robot::blinkLeds() {
 	static int counter = 0;
